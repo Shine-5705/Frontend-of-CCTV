@@ -4,7 +4,7 @@ import ReactPlayer from 'react-player';
 import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
 
-const YoutubeMonitor = ({ onIncident }) => {
+const YoutubeMonitor = ({ onIncident, modelLoaded }) => {
   const [url, setUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [confidence, setConfidence] = useState(0);

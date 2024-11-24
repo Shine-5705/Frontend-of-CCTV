@@ -4,7 +4,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
 import { FiUpload, FiPlay, FiPause, FiRefreshCw } from 'react-icons/fi';
 
-const VideoUploadMonitor = ({ onIncident }) => {
+const VideoUploadMonitor = ({ onIncident, modelLoaded }) => {
   const videoRef = useRef(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [confidence, setConfidence] = useState(0);

@@ -65,7 +65,7 @@ const LandingPage = () => {
                 transition={{ delay: 0.5 }}
                 className="block text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400"
               >
-                AI-Powered Monitoring
+                AI-Powered Shine Gupta
               </motion.span>
             </h1>
           </motion.div>

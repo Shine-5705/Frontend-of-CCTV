@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
 import WebcamMonitor from './monitors/WebcamMonitor';
 import VideoUploadMonitor from './monitors/VideoUploadMonitor';
 import YoutubeMonitor from './monitors/YoutubeMonitor';
 import { FiCamera, FiUpload, FiYoutube, FiArrowLeft, FiAlertCircle, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-
-const AZURE_ENDPOINT = "https://hawkeye-surveillance-cvekefdzc6agc3h5.centralindia-01.azurewebsites.net";
+import { apiService } from '../services/api';
 
 const Monitor = () => {
   const [monitorType, setMonitorType] = useState(null);
@@ -15,29 +13,41 @@ const Monitor = () => {
   const [features, setFeatures] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [modelStatus, setModelStatus] = useState({ loaded: false, azure: false });
+  const [modelStatus, setModelStatus] = useState({ loaded: false });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [featuresResponse, statusResponse, modelStatusResponse] = await Promise.all([
-          axios.get(`${AZURE_ENDPOINT}/api/features`),
-          axios.get(`${AZURE_ENDPOINT}/api/status`),
-          axios.get(`${AZURE_ENDPOINT}/api/model/status`)
+        console.log('📡 Fetching initial data...');
+        const [
+          featuresResponse,
+          statusResponse,
+          modelStatusResponse
+        ] = await Promise.all([
+          apiService.getFeatures(),
+          apiService.getStatus(),
+          apiService.getModelStatus()
         ]);
 
         setFeatures(featuresResponse.data);
         setModelStatus({
-          loaded: modelStatusResponse.data.model_loaded,
-          azure: modelStatusResponse.data.azure_status === 'available'
+          loaded: modelStatusResponse.data.model_loaded
         });
         
         if (!statusResponse.data.models_loaded) {
+          console.warn('⚠️ Models not loaded');
           toast.error('Models not loaded. Some features may be limited.');
         }
+
+        console.log('✅ Initial data fetch complete', {
+          features: featuresResponse.data,
+          status: statusResponse.data,
+          modelStatus: modelStatusResponse.data
+        });
       } catch (err) {
-        setError('Failed to connect to the Azure service');
-        toast.error('Failed to connect to the Azure service');
+        console.error('❌ Error fetching initial data:', err);
+        setError('Failed to load model data');
+        toast.error('Failed to load model data');
       } finally {
         setLoading(false);
       }
@@ -48,22 +58,28 @@ const Monitor = () => {
 
   const loadModel = async () => {
     try {
+      console.log('🔄 Loading model...');
       setLoading(true);
-      const response = await axios.get(`${AZURE_ENDPOINT}/api/model/load`);
+      const response = await apiService.loadModel();
+      
       if (response.data.model_loaded) {
+        console.log('✅ Model loaded successfully');
         toast.success('Model loaded successfully');
         setModelStatus(prev => ({ ...prev, loaded: true }));
       } else {
+        console.error('❌ Failed to load model:', response.data);
         toast.error('Failed to load model');
       }
     } catch (err) {
-      toast.error('Error loading model from Azure');
+      console.error('❌ Error loading model:', err);
+      toast.error('Error loading model');
     } finally {
       setLoading(false);
     }
   };
 
   const handleIncident = (incident) => {
+    console.log('🚨 New incident detected:', incident);
     setIncidents(prev => [...prev, { ...incident, id: Date.now() }]);
   };
 
@@ -135,7 +151,10 @@ const Monitor = () => {
                   icon={getFeatureIcon(key)}
                   description={feature.description}
                   capabilities={feature.capabilities}
-                  onClick={() => setMonitorType(key)}
+                  onClick={() => {
+                    console.log(`📺 Selecting monitor type: ${key}`);
+                    setMonitorType(key);
+                  }}
                   status={modelStatus.loaded ? feature.status : 'limited'}
                 />
               ))}
@@ -164,21 +183,18 @@ const Monitor = () => {
                     <WebcamMonitor 
                       onIncident={handleIncident} 
                       modelLoaded={modelStatus.loaded}
-                      azureEndpoint={AZURE_ENDPOINT}
                     />
                   )}
                   {monitorType === 'upload' && (
                     <VideoUploadMonitor 
                       onIncident={handleIncident}
                       modelLoaded={modelStatus.loaded}
-                      azureEndpoint={AZURE_ENDPOINT}
                     />
                   )}
                   {monitorType === 'youtube' && (
                     <YoutubeMonitor 
                       onIncident={handleIncident}
                       modelLoaded={modelStatus.loaded}
-                      azureEndpoint={AZURE_ENDPOINT}
                     />
                   )}
                 </div>

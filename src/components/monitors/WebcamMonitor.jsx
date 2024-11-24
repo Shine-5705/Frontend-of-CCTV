@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
 
-const WebcamMonitor = ({ onIncident }) => {
+const WebcamMonitor = ({ onIncident, modelLoaded }) => {
   const webcamRef = useRef(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [confidence, setConfidence] = useState(0);
