@@ -3,8 +3,8 @@ import { API_ROUTES } from '../config/endpoints';
 
 // Configure axios defaults
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:5000/',  // Empty baseURL since we're using relative paths
-  timeout: 10000
+  baseURL: '',  // Empty baseURL since we're using relative paths
+  timeout: 30000  // Increased timeout for video processing
 });
 
 // Request interceptor for logging
@@ -52,5 +52,9 @@ export const apiService = {
 
   async loadModel() {
     return api.get(API_ROUTES.modelLoad);
+  },
+
+  async post(url, data) {
+    return api.post(url, data);
   }
 };
