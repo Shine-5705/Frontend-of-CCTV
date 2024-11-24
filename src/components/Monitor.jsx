@@ -7,36 +7,61 @@ import YoutubeMonitor from './monitors/YoutubeMonitor';
 import { FiCamera, FiUpload, FiYoutube, FiArrowLeft, FiAlertCircle, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
+const AZURE_ENDPOINT = "https://hawkeye-surveillance-cvekefdzc6agc3h5.centralindia-01.azurewebsites.net";
+
 const Monitor = () => {
   const [monitorType, setMonitorType] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [features, setFeatures] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [modelStatus, setModelStatus] = useState({ loaded: false, azure: false });
 
   useEffect(() => {
-    const fetchFeatures = async () => {
+    const fetchData = async () => {
       try {
-        const [featuresResponse, statusResponse] = await Promise.all([
-          axios.get('http://localhost:5000/api/features'),
-          axios.get('http://localhost:5000/api/status')
+        const [featuresResponse, statusResponse, modelStatusResponse] = await Promise.all([
+          axios.get(`${AZURE_ENDPOINT}/api/features`),
+          axios.get(`${AZURE_ENDPOINT}/api/status`),
+          axios.get(`${AZURE_ENDPOINT}/api/model/status`)
         ]);
 
         setFeatures(featuresResponse.data);
+        setModelStatus({
+          loaded: modelStatusResponse.data.model_loaded,
+          azure: modelStatusResponse.data.azure_status === 'available'
+        });
         
         if (!statusResponse.data.models_loaded) {
           toast.error('Models not loaded. Some features may be limited.');
         }
       } catch (err) {
-        setError('Failed to connect to the server');
-        toast.error('Failed to connect to the server');
+        setError('Failed to connect to the Azure service');
+        toast.error('Failed to connect to the Azure service');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchFeatures();
+    fetchData();
   }, []);
+
+  const loadModel = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${AZURE_ENDPOINT}/api/model/load`);
+      if (response.data.model_loaded) {
+        toast.success('Model loaded successfully');
+        setModelStatus(prev => ({ ...prev, loaded: true }));
+      } else {
+        toast.error('Failed to load model');
+      }
+    } catch (err) {
+      toast.error('Error loading model from Azure');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleIncident = (incident) => {
     setIncidents(prev => [...prev, { ...incident, id: Date.now() }]);
@@ -61,6 +86,14 @@ const Monitor = () => {
         <div className="text-center text-red-500">
           <FiAlertCircle className="w-12 h-12 mx-auto mb-4" />
           <p>{error}</p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={loadModel}
+            className="mt-4 px-6 py-2 bg-indigo-600 rounded-lg text-white"
+          >
+            Retry Loading Model
+          </motion.button>
         </div>
       </div>
     );
@@ -69,6 +102,23 @@ const Monitor = () => {
   return (
     <div className="min-h-screen pt-16 p-4 bg-gradient-to-br from-indigo-900 via-gray-900 to-black">
       <div className="max-w-7xl mx-auto relative">
+        {!modelStatus.loaded && (
+          <div className="mb-6 p-4 bg-yellow-500/20 rounded-lg">
+            <p className="text-yellow-300 flex items-center gap-2">
+              <FiAlertCircle />
+              Model not loaded. Some features may be limited.
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={loadModel}
+                className="ml-4 px-4 py-1 bg-yellow-500/30 rounded-lg"
+              >
+                Load Model
+              </motion.button>
+            </p>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {!monitorType ? (
             <motion.div
@@ -86,7 +136,7 @@ const Monitor = () => {
                   description={feature.description}
                   capabilities={feature.capabilities}
                   onClick={() => setMonitorType(key)}
-                  status={feature.status}
+                  status={modelStatus.loaded ? feature.status : 'limited'}
                 />
               ))}
             </motion.div>
@@ -110,9 +160,27 @@ const Monitor = () => {
 
               <div className="grid md:grid-cols-3 gap-8">
                 <div className="md:col-span-2">
-                  {monitorType === 'webcam' && <WebcamMonitor onIncident={handleIncident} />}
-                  {monitorType === 'upload' && <VideoUploadMonitor onIncident={handleIncident} />}
-                  {monitorType === 'youtube' && <YoutubeMonitor onIncident={handleIncident} />}
+                  {monitorType === 'webcam' && (
+                    <WebcamMonitor 
+                      onIncident={handleIncident} 
+                      modelLoaded={modelStatus.loaded}
+                      azureEndpoint={AZURE_ENDPOINT}
+                    />
+                  )}
+                  {monitorType === 'upload' && (
+                    <VideoUploadMonitor 
+                      onIncident={handleIncident}
+                      modelLoaded={modelStatus.loaded}
+                      azureEndpoint={AZURE_ENDPOINT}
+                    />
+                  )}
+                  {monitorType === 'youtube' && (
+                    <YoutubeMonitor 
+                      onIncident={handleIncident}
+                      modelLoaded={modelStatus.loaded}
+                      azureEndpoint={AZURE_ENDPOINT}
+                    />
+                  )}
                 </div>
 
                 <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6">
@@ -135,7 +203,7 @@ const Monitor = () => {
                           <div className="flex justify-between items-start">
                             <div>
                               <h4 className="font-medium">
-                                Potential Fight Scene
+                                {incident.type || 'Potential Incident'}
                               </h4>
                               <p className="text-gray-400">
                                 Source: {incident.source}
@@ -185,7 +253,9 @@ const MonitorOption = ({ title, icon, description, capabilities, onClick, status
         ))}
       </div>
       <span className={`px-2 py-1 rounded-full text-xs ${
-        status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+        status === 'active' ? 'bg-green-500/20 text-green-400' : 
+        status === 'limited' ? 'bg-yellow-500/20 text-yellow-400' :
+        'bg-red-500/20 text-red-400'
       }`}>
         {status}
       </span>
