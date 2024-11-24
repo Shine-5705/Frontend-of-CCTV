@@ -1,17 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
 import WebcamMonitor from './monitors/WebcamMonitor';
 import VideoUploadMonitor from './monitors/VideoUploadMonitor';
 import YoutubeMonitor from './monitors/YoutubeMonitor';
-import { FiCamera, FiUpload, FiYoutube, FiArrowLeft, FiAlertCircle } from 'react-icons/fi';
+import { FiCamera, FiUpload, FiYoutube, FiArrowLeft, FiAlertCircle, FiLoader } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 
 const Monitor = () => {
   const [monitorType, setMonitorType] = useState(null);
   const [incidents, setIncidents] = useState([]);
+  const [features, setFeatures] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchFeatures = async () => {
+      try {
+        const [featuresResponse, statusResponse] = await Promise.all([
+          axios.get('http://localhost:5000/api/features'),
+          axios.get('http://localhost:5000/api/status')
+        ]);
+
+        setFeatures(featuresResponse.data);
+        
+        if (!statusResponse.data.models_loaded) {
+          toast.error('Models not loaded. Some features may be limited.');
+        }
+      } catch (err) {
+        setError('Failed to connect to the server');
+        toast.error('Failed to connect to the server');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFeatures();
+  }, []);
 
   const handleIncident = (incident) => {
     setIncidents(prev => [...prev, { ...incident, id: Date.now() }]);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-16 flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        >
+          <FiLoader className="w-8 h-8 text-indigo-500" />
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen pt-16 flex items-center justify-center">
+        <div className="text-center text-red-500">
+          <FiAlertCircle className="w-12 h-12 mx-auto mb-4" />
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pt-16 p-4 bg-gradient-to-br from-indigo-900 via-gray-900 to-black">
@@ -25,24 +78,17 @@ const Monitor = () => {
               exit={{ opacity: 0, y: -20 }}
               className="grid md:grid-cols-3 gap-8 mt-8"
             >
-              <MonitorOption
-                title="Live Webcam"
-                icon={<FiCamera className="text-4xl" />}
-                description="Real-time monitoring using your device's camera"
-                onClick={() => setMonitorType('webcam')}
-              />
-              <MonitorOption
-                title="Upload Video"
-                icon={<FiUpload className="text-4xl" />}
-                description="Analyze pre-recorded videos for incidents"
-                onClick={() => setMonitorType('upload')}
-              />
-              <MonitorOption
-                title="YouTube Stream"
-                icon={<FiYoutube className="text-4xl" />}
-                description="Monitor YouTube streams and videos"
-                onClick={() => setMonitorType('youtube')}
-              />
+              {features && Object.entries(features).map(([key, feature]) => (
+                <MonitorOption
+                  key={key}
+                  title={feature.name}
+                  icon={getFeatureIcon(key)}
+                  description={feature.description}
+                  capabilities={feature.capabilities}
+                  onClick={() => setMonitorType(key)}
+                  status={feature.status}
+                />
+              ))}
             </motion.div>
           ) : (
             <motion.div
@@ -88,8 +134,10 @@ const Monitor = () => {
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <h4 className="font-medium">Potential Fight Scene</h4>
-                              <p className="text-sm text-gray-400">
+                              <h4 className="font-medium">
+                                Potential Fight Scene
+                              </h4>
+                              <p className="text-gray-400">
                                 Source: {incident.source}
                               </p>
                             </div>
@@ -113,7 +161,7 @@ const Monitor = () => {
   );
 };
 
-const MonitorOption = ({ title, icon, description, onClick }) => (
+const MonitorOption = ({ title, icon, description, capabilities, onClick, status }) => (
   <motion.div
     whileHover={{ scale: 1.05, y: -5 }}
     whileTap={{ scale: 0.95 }}
@@ -126,8 +174,36 @@ const MonitorOption = ({ title, icon, description, onClick }) => (
       </div>
       <h3 className="text-xl font-semibold">{title}</h3>
       <p className="text-gray-400 text-sm">{description}</p>
+      <div className="flex flex-wrap gap-2 justify-center">
+        {capabilities.map((capability, index) => (
+          <span
+            key={index}
+            className="px-2 py-1 bg-indigo-500/20 rounded-full text-xs"
+          >
+            {capability}
+          </span>
+        ))}
+      </div>
+      <span className={`px-2 py-1 rounded-full text-xs ${
+        status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+      }`}>
+        {status}
+      </span>
     </div>
   </motion.div>
 );
+
+const getFeatureIcon = (type) => {
+  switch (type) {
+    case 'webcam':
+      return <FiCamera className="text-4xl" />;
+    case 'upload':
+      return <FiUpload className="text-4xl" />;
+    case 'youtube':
+      return <FiYoutube className="text-4xl" />;
+    default:
+      return null;
+  }
+};
 
 export default Monitor;

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite\" \"python api/app.py\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -14,6 +14,8 @@
     "@tensorflow-models/blazeface": "^0.1.0",
     "@tensorflow/tfjs": "^4.17.0",
     "autoprefixer": "^10.4.17",
+    "axios": "^1.6.7",
+    "concurrently": "^8.2.2",
     "date-fns": "^3.3.1",
     "framer-motion": "^11.0.3",
     "postcss": "^8.4.35",
