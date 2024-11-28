@@ -1,70 +1,100 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { motion } from 'framer-motion';
-import * as tf from '@tensorflow/tfjs';
-import * as blazeface from '@tensorflow-models/blazeface';
+import { startVideoStream } from '../../utils/videoProcessing';
+import { FiVideo, FiVideoOff } from 'react-icons/fi';
 
 const WebcamMonitor = ({ onIncident, modelLoaded }) => {
   const webcamRef = useRef(null);
+  const streamInterval = useRef(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [confidence, setConfidence] = useState(0);
-  
-  useEffect(() => {
-    let detectInterval;
-    
-    const loadModel = async () => {
-      const model = await blazeface.load();
-      
-      detectInterval = setInterval(async () => {
-        if (webcamRef.current) {
-          const video = webcamRef.current.video;
-          const predictions = await model.estimateFaces(video, false);
-          
-          if (predictions.length > 1) {
-            const confidence = predictions[0].probability[0];
-            setConfidence(confidence);
-            
-            if (confidence > 0.8) {
-              onIncident({
-                type: 'fight',
-                confidence,
-                source: 'webcam',
-              });
-            }
-          }
-        }
-      }, 1000);
-    };
+  const [error, setError] = useState(null);
 
-    if (isDetecting) {
-      loadModel();
+  const handleStreamResult = useCallback((result) => {
+    if (result.predicted_class === 1) {
+      setConfidence(result.confidence);
+      
+      if (result.confidence > 0.4) {
+        onIncident({
+          type: 'fight',
+          confidence: result.confidence,
+          source: 'webcam',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  }, [onIncident]);
+
+  const startDetection = useCallback(() => {
+    if (!modelLoaded) {
+      setError('Model not loaded. Please wait.');
+      return;
     }
 
+    try {
+      const intervalId = startVideoStream(webcamRef, handleStreamResult);
+      streamInterval.current = intervalId;
+      setIsDetecting(true);
+      setError(null);
+    } catch (err) {
+      setError('Failed to start detection');
+      console.error('Detection error:', err);
+    }
+  }, [modelLoaded, handleStreamResult]);
+
+  const stopDetection = useCallback(() => {
+    if (streamInterval.current) {
+      clearInterval(streamInterval.current);
+      streamInterval.current = null;
+    }
+    setIsDetecting(false);
+    setConfidence(0);
+  }, []);
+
+  useEffect(() => {
     return () => {
-      if (detectInterval) {
-        clearInterval(detectInterval);
+      if (streamInterval.current) {
+        clearInterval(streamInterval.current);
       }
     };
-  }, [isDetecting, onIncident]);
+  }, []);
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative">
+    <div className="flex flex-col items-center space-y-6">
+      <div className="relative w-full max-w-3xl">
         <Webcam
           ref={webcamRef}
-          className="rounded-lg shadow-xl"
-          style={{ width: '100%', maxWidth: '800px' }}
+          className="rounded-xl shadow-2xl w-full"
+          screenshotFormat="image/jpeg"
+          videoConstraints={{
+            width: 1280,
+            height: 720,
+            facingMode: "user"
+          }}
         />
         
         {confidence > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className={`absolute top-4 right-4 px-4 py-2 rounded-full ${
-              confidence > 0.8 ? 'bg-red-600' : 'bg-yellow-600'
+            className={`absolute top-4 right-4 px-4 py-2 rounded-full backdrop-blur-sm ${
+              confidence > 0.8 
+                ? 'bg-red-500/50 border border-red-400' 
+                : 'bg-yellow-500/50 border border-yellow-400'
             }`}
           >
             Confidence: {(confidence * 100).toFixed(1)}%
+          </motion.div>
+        )}
+
+        {error && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute top-4 left-4 px-4 py-2 rounded-full bg-red-500/50 border border-red-400 backdrop-blur-sm"
+          >
+            {error}
           </motion.div>
         )}
       </div>
@@ -72,15 +102,37 @@ const WebcamMonitor = ({ onIncident, modelLoaded }) => {
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        onClick={() => setIsDetecting(!isDetecting)}
-        className={`mt-8 px-6 py-3 rounded-full font-semibold ${
-          isDetecting 
+        onClick={isDetecting ? stopDetection : startDetection}
+        disabled={!modelLoaded}
+        className={`
+          px-6 py-3 rounded-xl font-semibold
+          flex items-center gap-2 transition-colors
+          ${isDetecting 
             ? 'bg-red-600 hover:bg-red-700' 
-            : 'bg-green-600 hover:bg-green-700'
-        }`}
+            : modelLoaded 
+              ? 'bg-green-600 hover:bg-green-700'
+              : 'bg-gray-600 cursor-not-allowed'
+          }
+        `}
       >
-        {isDetecting ? 'Stop Detection' : 'Start Detection'}
+        {isDetecting ? (
+          <>
+            <FiVideoOff className="w-5 h-5" />
+            Stop Detection
+          </>
+        ) : (
+          <>
+            <FiVideo className="w-5 h-5" />
+            Start Detection
+          </>
+        )}
       </motion.button>
+
+      {!modelLoaded && (
+        <p className="text-yellow-400 text-sm">
+          Please wait for the model to load before starting detection.
+        </p>
+      )}
     </div>
   );
 };
